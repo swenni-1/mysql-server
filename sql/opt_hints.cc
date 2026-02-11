@@ -208,6 +208,7 @@ Opt_hints_qb::Opt_hints_qb(Opt_hints *opt_hints_arg, MEM_ROOT *mem_root_arg,
       select_number(select_number_arg),
       subquery_hint(nullptr),
       semijoin_hint(nullptr),
+      force_hash_join_hint(nullptr),
       join_order_hints(mem_root_arg),
       join_order_hints_ignored(0) {
   sys_name.str = buff;
