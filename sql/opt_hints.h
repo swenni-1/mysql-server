@@ -89,6 +89,7 @@ enum opt_hints_enum {
   ORDER_INDEX_HINT_ENUM,
   DERIVED_CONDITION_PUSHDOWN_HINT_ENUM,
   SET_HASH_JOIN_DISTRIBUTION_ENUM,
+  FORCE_HASH_JOIN_ENUM,
   MAX_HINT_ENUM
 };
 
@@ -390,7 +391,7 @@ class Opt_hints_qb : public Opt_hints {
   LEX_CSTRING sys_name;  // System QB name
   char buff[32];         // Buffer to hold sys name
 
-  PT_qb_level_hint *subquery_hint, *semijoin_hint;
+  PT_qb_level_hint *subquery_hint, *semijoin_hint, *force_hash_join_hint;
   PT_hint_set_hash_join_distribution *hash_join_distribution_hint;
 
   /// Array of join order hints
@@ -500,6 +501,7 @@ class Opt_hints_qb : public Opt_hints {
                          const mem_root_deque<Table_ref *> *join_list);
 
   bool has_join_order_hints() const;
+  bool has_force_hash_join_hint() const;
   void clear_join_order_hints();
 
   /**
@@ -512,6 +514,10 @@ class Opt_hints_qb : public Opt_hints {
 
   void set_hash_join_distribution_hint(PT_hint_set_hash_join_distribution *hint) {
     hash_join_distribution_hint = hint;
+  }
+
+  void set_force_hash_join_hint(PT_qb_level_hint *hint) {
+    force_hash_join_hint = hint;
   }
 
  private:
