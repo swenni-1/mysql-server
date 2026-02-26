@@ -721,6 +721,29 @@ static size_t ComputeHashJoinMemoryBudget(
     DistributionFunc distribution_mode) {
   
 
+  bool debug = true;
+  if (debug && distribution_mode == DistributionFunc::PUSH_DOWN) {
+    const size_t depth = depths.at(path);
+    fprintf(stderr, "depth=%lu\n", depth);
+    if (depth == 1) {
+      return 12.2e+6;
+    }
+    else if (depth == 2) {
+      return 9.05e+6;
+    }
+     else if (depth == 3) {
+      return 3.32e+6;
+    }
+    else if (depth == 4) {
+      return 3.16e+6;
+    }
+    else {
+      return 20512;
+    }
+  
+  }
+  
+
   size_t max_depth = 0;
   for (const auto &entry : depths) {
     max_depth = std::max(max_depth, entry.second);
