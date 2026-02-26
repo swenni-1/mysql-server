@@ -359,9 +359,12 @@ class HashJoinIterator final : public RowIterator {
 
   double BufferFillRatio() const;
 
-  size_t BuildMemoryRequiredBytes() const { return UsedBytes();} 
-
   size_t BufferSize() const { return m_max_memory_available; }
+
+  size_t BuildMemoryRequiredBytes() const {
+  return m_build_bytes_needed_at_spill != 0 ? m_build_bytes_needed_at_spill
+                                            : m_row_buffer.UsedMemoryBytes();
+}
   
  private:
   bool DoInit() override;
@@ -717,9 +720,9 @@ class HashJoinIterator final : public RowIterator {
 
   bool m_spilled_to_disk{false};
 
-  size_t UsedBytes() const;
-
   size_t m_max_memory_available;
+
+  size_t m_build_bytes_needed_at_spill{0};
 };
 
 #endif  // SQL_ITERATORS_HASH_JOIN_ITERATOR_H_

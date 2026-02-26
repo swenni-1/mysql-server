@@ -714,6 +714,44 @@ const Mem_root_array<Item *> *GetExtraHashJoinConditions(
   return extra_conditions;
 }
 
+static size_t ComputeHashJoinMemoryBudget(
+    size_t join_buffer_size,
+    const std::unordered_map<const AccessPath *, size_t> &depths,
+    const AccessPath *path,
+    DistributionFunc distribution_mode) {
+  
+
+  size_t max_depth = 0;
+  for (const auto &entry : depths) {
+    max_depth = std::max(max_depth, entry.second);
+  }
+
+  auto weight_for_depth = [&](size_t depth) -> size_t {
+    switch (distribution_mode) {
+      case DistributionFunc::EQUAL:
+        return 1;
+      case DistributionFunc::PUSH_DOWN:
+        return depth + 1;
+      case DistributionFunc::PUSH_UP:
+        return (max_depth - depth + 1);
+      case DistributionFunc::CARDINALITYBASED:
+        return 1;
+    }
+    return 1;
+  };
+
+  size_t sum_weights = 0;
+  for (const auto &entry : depths) {
+    sum_weights += weight_for_depth(entry.second);
+  }
+
+  const size_t total_budget = depths.size() * join_buffer_size;
+  const size_t depth = depths.at(path);
+  const size_t weight = weight_for_depth(depth);
+  
+  return (total_budget * weight) / sum_weights;
+}
+
 static std::unordered_map<const AccessPath *, size_t> HashJoinDepthMap(const AccessPath *root) {
   std::unordered_map<const AccessPath *, size_t> depths;
   if (root == nullptr) return depths;
@@ -1284,37 +1322,10 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
         // Intercept max memory and change it here:
         size_t hash_join_iterator_max_memory = thd->variables.join_buff_size;
         if (!depths.empty()) {
-          const size_t count = depths.size();
-          const size_t total_budget = thd->variables.join_buff_size * count;
-
-          size_t max_depth = 0;
-          for (const auto &entry: depths) {
-            max_depth = std::max(max_depth, entry.second);
-          }
-
-          DistributionFunc distribution_mode = join->query_block->opt_hints_qb->hash_join_distribution();
-          auto weight_for_depth = [&](size_t depth) -> size_t {
-            switch (distribution_mode)
-            {
-            case DistributionFunc::EQUAL:
-              return 1;
-            case DistributionFunc::PUSH_DOWN:
-              return depth + 1;
-            case DistributionFunc::PUSH_UP:
-              return (max_depth - depth + 1);
-            }
-            return 1;
-          };
-
-          size_t sum_weights = 0;
-          for (const auto &entry: depths) {
-            sum_weights += weight_for_depth(entry.second);
-          }
-
-          size_t depth = depths.at(path);
-          size_t weight = weight_for_depth(depth);
-
-          hash_join_iterator_max_memory = (total_budget * weight) / sum_weights;
+          hash_join_iterator_max_memory = ComputeHashJoinMemoryBudget(
+              thd->variables.join_buff_size, depths, path, 
+              top_join->query_block->opt_hints_qb->hash_join_distribution()
+          );
         }
 
         iterator = NewIterator<HashJoinIterator>(
