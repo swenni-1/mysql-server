@@ -627,12 +627,22 @@ bool HashJoinIterator::BuildHashTable() {
           return true;
         }
 
-        size_t bytes_on_disk = 0;
-        for (const ChunkPair &chunk_pair : m_chunk_files_on_disk) {
-          bytes_on_disk += chunk_pair.build_chunk.BytesWrittenExact();
-        }
-        m_build_bytes_needed_at_spill = m_row_buffer.UsedMemoryBytes() + bytes_on_disk;
 
+        // TODO: Needs to be tested on more queries to see if overestimation is constant. 
+        size_t rows_spilled = 0;
+        for (const ChunkPair &chunk_pair : m_chunk_files_on_disk) {
+          rows_spilled += chunk_pair.build_chunk.NumRows();
+        }
+        size_t rows_in_memory = m_row_buffer.NumOfRows();
+        size_t bytes_in_memory = m_row_buffer.UsedMemoryBytes();
+        double bytes_per_row = static_cast<double>(bytes_in_memory) / static_cast<double>(rows_in_memory);        
+        size_t theoretical_spilled_bytes = static_cast<size_t>(bytes_per_row * rows_spilled);
+
+        m_build_bytes_needed_at_spill = bytes_in_memory + theoretical_spilled_bytes;
+        
+        fprintf(stderr, "rows_spilled=%ld, rows_in_mem=%ld, bytes_in_mem=%ld, theoretical_bytes_spilled=%ld, m_build_bytes_needed_at_spill=%ld\n", 
+          rows_spilled, rows_in_memory, bytes_in_memory, theoretical_spilled_bytes, m_build_bytes_needed_at_spill);
+        
         // Flush and position all chunk files from the build input at the
         // beginning.
         for (ChunkPair &chunk_pair : m_chunk_files_on_disk) {

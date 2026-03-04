@@ -719,23 +719,39 @@ static size_t ComputeHashJoinMemoryBudget(
     const std::unordered_map<const AccessPath *, size_t> &depths,
     const AccessPath *path,
     DistributionFunc distribution_mode) {
+  const size_t depth = depths.at(path);
+  fprintf(stderr, "depth=%lu\n", depth);
   
-
   bool debug = true;
   if (debug && distribution_mode == DistributionFunc::PUSH_DOWN) {
-    const size_t depth = depths.at(path);
-    fprintf(stderr, "depth=%lu\n", depth);
+    /*
     if (depth == 1) {
-      return 12.2e+6;
+      return 1.23e+6;
     }
     else if (depth == 2) {
-      return 9.05e+6;
+      return 1.21e+6;
     }
-     else if (depth == 3) {
-      return 3.32e+6;
+    else if (depth == 6) {
+      return 20512;
+    }
+    else if (depth == 7) {
+      return 512512;
+    }
+    */
+    if (depth == 1) {
+      return 11337168;
+    }
+    else if (depth== 2) {
+      return 10386249;
+    }
+    else if (depth == 3) {
+      return 3963549;
     }
     else if (depth == 4) {
-      return 3.16e+6;
+      return 3552207;
+    }
+    else if (depth == 5) {
+      return 20512;
     }
     else {
       return 20512;
@@ -749,14 +765,14 @@ static size_t ComputeHashJoinMemoryBudget(
     max_depth = std::max(max_depth, entry.second);
   }
 
-  auto weight_for_depth = [&](size_t depth) -> size_t {
+  auto weight_for_depth = [&](size_t depth_of_node) -> size_t {
     switch (distribution_mode) {
       case DistributionFunc::EQUAL:
         return 1;
       case DistributionFunc::PUSH_DOWN:
-        return depth + 1;
+        return depth_of_node + 1;
       case DistributionFunc::PUSH_UP:
-        return (max_depth - depth + 1);
+        return (max_depth - depth_of_node + 1);
       case DistributionFunc::CARDINALITYBASED:
         return 1;
     }
@@ -769,7 +785,6 @@ static size_t ComputeHashJoinMemoryBudget(
   }
 
   const size_t total_budget = depths.size() * join_buffer_size;
-  const size_t depth = depths.at(path);
   const size_t weight = weight_for_depth(depth);
   
   return (total_budget * weight) / sum_weights;

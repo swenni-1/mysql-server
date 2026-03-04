@@ -356,15 +356,15 @@ class HashJoinIterator final : public RowIterator {
   int ChunkCount() { return m_chunk_files_on_disk.size(); }
 
   bool SpilledToDisk() const { return m_spilled_to_disk; }
-
+  
   double BufferFillRatio() const;
 
   size_t BufferSize() const { return m_max_memory_available; }
 
   size_t BuildMemoryRequiredBytes() const {
-  return m_build_bytes_needed_at_spill != 0 ? m_build_bytes_needed_at_spill
-                                            : m_row_buffer.UsedMemoryBytes();
-}
+    return m_build_bytes_needed_at_spill != 0 ? m_build_bytes_needed_at_spill
+                                              : m_row_buffer.UsedMemoryBytes();
+  }
   
  private:
   bool DoInit() override;

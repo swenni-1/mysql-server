@@ -211,6 +211,8 @@ bool HashJoinRowBuffer::Init() {
     // Limit is being applied only after the first row.
     m_mem_root.set_max_capacity(0);
     m_overflow_mem_root.ClearForReuse();
+    
+    num_of_rows = 0;
 
     // Now that the destructors are finished and the MEM_ROOT is cleared,
     // we can allocate a new hash map.
@@ -319,6 +321,7 @@ StoreRowResult HashJoinRowBuffer::StoreRow(THD *thd,
     m_mem_root.RawCommit(bytes_to_commit);
   } else {
     if (reject_duplicate_keys) {
+      // num_of_rows++; // here as well?
       return StoreRowResult::ROW_STORED;
     }
     // We already have another element with the same key, so our insert
@@ -333,8 +336,10 @@ StoreRowResult HashJoinRowBuffer::StoreRow(THD *thd,
   if (m_last_row_stored == nullptr) {
     return StoreRowResult::FATAL_ERROR;
   } else if (info.m_full) {
+    num_of_rows++;
     return StoreRowResult::BUFFER_FULL;
   } else {
+    num_of_rows++;
     return StoreRowResult::ROW_STORED;
   }
 }
