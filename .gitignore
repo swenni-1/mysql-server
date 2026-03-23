@@ -31,3 +31,6 @@ scalability_jobs_*
 
 # Cache directory used by e.g. clangd.
 .cache/
+
+# MySQL data dir
+/mysql-data
