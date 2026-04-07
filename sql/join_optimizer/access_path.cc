@@ -721,44 +721,21 @@ static size_t ComputeHashJoinMemoryBudget(
     DistributionFunc distribution_mode) {
   const size_t depth = depths.at(path);
   fprintf(stderr, "depth=%lu\n", depth);
-  
-  bool debug = true;
-  if (debug && distribution_mode == DistributionFunc::PUSH_DOWN) {
-    /*
-    if (depth == 1) {
-      return 1.23e+6;
+
+  if (distribution_mode == DistributionFunc::HARDCODED) {
+    
+    switch (depth) {
+        case 4:  return 20736;
+        case 5:  return 34175510;
+        case 6:  return 3814688;
+        default: return depth;
     }
-    else if (depth == 2) {
-      return 1.21e+6;
-    }
-    else if (depth == 6) {
-      return 20512;
-    }
-    else if (depth == 7) {
-      return 512512;
-    }
-    */
-    if (depth == 1) {
-      return 11337168;
-    }
-    else if (depth== 2) {
-      return 10386249;
-    }
-    else if (depth == 3) {
-      return 3963549;
-    }
-    else if (depth == 4) {
-      return 3552207;
-    }
-    else if (depth == 5) {
-      return 20512;
-    }
-    else {
-      return 20512;
-    }
-  
+
   }
-  
+  else{
+    return 6667644;
+  }
+
 
   size_t max_depth = 0;
   for (const auto &entry : depths) {
@@ -770,10 +747,10 @@ static size_t ComputeHashJoinMemoryBudget(
       case DistributionFunc::EQUAL:
         return 1;
       case DistributionFunc::PUSH_DOWN:
-        return depth_of_node + 1;
+        return std::pow(depth_of_node + 1, 1.3);
       case DistributionFunc::PUSH_UP:
-        return (max_depth - depth_of_node + 1);
-      case DistributionFunc::CARDINALITYBASED:
+        return std::pow(max_depth - depth_of_node + 1, 1.3);
+      case DistributionFunc::HARDCODED:
         return 1;
     }
     return 1;
