@@ -229,6 +229,7 @@ void Hint_scanner::add_hint_token_digest() {
           case NO_DERIVED_CONDITION_PUSHDOWN_HINT:
           case SET_HASH_JOIN_DISTRIBUTION:
           case FORCE_HASH_JOIN:
+          case HJ_BUFFER_SIZE:
             break;
           default:
             assert(false);

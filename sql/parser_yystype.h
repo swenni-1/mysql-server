@@ -356,6 +356,8 @@ union MY_SQL_PARSER_STYPE {
   Hint_param_index_list hint_param_index_list;
   Hint_param_table hint_param_table;
   Hint_param_table_list hint_param_table_list;
+  Hint_param_kv hint_param_kv;
+  Hint_param_kv_list hint_param_kv_list;
 
   /*
     Main parser section (sql_yacc.yy)

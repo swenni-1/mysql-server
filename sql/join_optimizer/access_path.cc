@@ -715,50 +715,25 @@ const Mem_root_array<Item *> *GetExtraHashJoinConditions(
 }
 
 static size_t ComputeHashJoinMemoryBudget(
-    size_t join_buffer_size,
-    const std::unordered_map<const AccessPath *, size_t> &depths,
-    const AccessPath *path,
-    DistributionFunc distribution_mode) {
+  size_t join_buffer_size,
+  const std::unordered_map<const AccessPath *, size_t> &depths,
+  const AccessPath *path,
+  DistributionFunc distribution_mode,
+  const Hint_param_kv_list *hj_buffer_size_list) {
   const size_t depth = depths.at(path);
   fprintf(stderr, "depth=%lu\n", depth);
-  
-  bool debug = true;
-  if (debug && distribution_mode == DistributionFunc::PUSH_DOWN) {
-    /*
-    if (depth == 1) {
-      return 1.23e+6;
+
+  if (hj_buffer_size_list != nullptr) {
+    fprintf(stderr, "we in the function");
+    for (const auto &entry : *hj_buffer_size_list) {
+      if (entry.key == depth) {
+        return entry.value;
+      }
     }
-    else if (depth == 2) {
-      return 1.21e+6;
-    }
-    else if (depth == 6) {
-      return 20512;
-    }
-    else if (depth == 7) {
-      return 512512;
-    }
-    */
-    if (depth == 1) {
-      return 11337168;
-    }
-    else if (depth== 2) {
-      return 10386249;
-    }
-    else if (depth == 3) {
-      return 3963549;
-    }
-    else if (depth == 4) {
-      return 3552207;
-    }
-    else if (depth == 5) {
-      return 20512;
-    }
-    else {
-      return 20512;
-    }
-  
+    return depth;
   }
-  
+
+
 
   size_t max_depth = 0;
   for (const auto &entry : depths) {
@@ -770,11 +745,9 @@ static size_t ComputeHashJoinMemoryBudget(
       case DistributionFunc::EQUAL:
         return 1;
       case DistributionFunc::PUSH_DOWN:
-        return depth_of_node + 1;
+        return std::pow(depth_of_node + 1, 1.3);
       case DistributionFunc::PUSH_UP:
-        return (max_depth - depth_of_node + 1);
-      case DistributionFunc::CARDINALITYBASED:
-        return 1;
+        return std::pow(max_depth - depth_of_node + 1, 1.3);
     }
     return 1;
   };
@@ -881,17 +854,17 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
   std::unordered_map<const AccessPath *, size_t> depths;
 
   // Only count hash join if hint is given.
-  if (top_join != nullptr && 
-      top_join->query_block != nullptr && 
-      top_join->query_block->opt_hints_qb != nullptr && 
+if (top_join != nullptr &&
+    top_join->query_block != nullptr &&
+    ((top_join->query_block->opt_hints_qb != nullptr &&
       top_join->query_block->opt_hints_qb->is_specified(
-        SET_HASH_JOIN_DISTRIBUTION_ENUM) &&
-      top_join->query_block->opt_hints_qb->hash_join_distribution() != 
-        DistributionFunc::EQUAL) {
-    // Hint was given and mode is not EQUAL, so we need to count hash joins
-    // and find the depths of said hash joins. 
-    depths = HashJoinDepthMap(top_path);
-  }
+          SET_HASH_JOIN_DISTRIBUTION_ENUM) &&
+      top_join->query_block->opt_hints_qb->hash_join_distribution() !=
+          DistributionFunc::EQUAL) ||
+     (top_join->query_block->hj_buffer_size_list != nullptr))) {
+  // Hint was given and mode is not EQUAL, or HJ_BUFFER_SIZE was given.
+  depths = HashJoinDepthMap(top_path);
+}
 
   unique_ptr_destroy_only<RowIterator> ret;
   Mem_root_array<IteratorToBeCreated> todo(mem_root);
@@ -1361,9 +1334,9 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
         size_t hash_join_iterator_max_memory = thd->variables.join_buff_size;
         if (!depths.empty()) {
           hash_join_iterator_max_memory = ComputeHashJoinMemoryBudget(
-              thd->variables.join_buff_size, depths, path, 
-              top_join->query_block->opt_hints_qb->hash_join_distribution()
-          );
+              thd->variables.join_buff_size, depths, path,
+              top_join->query_block->opt_hints_qb->hash_join_distribution(),
+              top_join->query_block->hj_buffer_size_list);
         }
 
         iterator = NewIterator<HashJoinIterator>(

@@ -290,6 +290,29 @@ bool PT_qb_level_hint::do_contextualize(Parse_context *pc) {
   return false;
 }
 
+bool PT_hint_hj_buffer_size::do_contextualize(Parse_context *pc) {
+  Query_block *select = pc->select;
+  if (select == nullptr) return false;
+  if (select->hj_buffer_size_seen) {
+    print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, &qb_name, nullptr, nullptr,
+               this);
+    return false;
+  }
+  select->hj_buffer_size_seen = true;
+  // Warn on duplicate keys; last value wins.
+  for (uint i = 0; i < kv_list.size(); ++i) {
+    for (uint j = i + 1; j < kv_list.size(); ++j) {
+      if (kv_list.at(i).key == kv_list.at(j).key) {
+        print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, &qb_name, nullptr,
+                   nullptr, this);
+        break;
+      }
+    }
+  }
+  select->hj_buffer_size_list = &kv_list;
+  return false;
+}
+
 void PT_qb_level_hint::append_args(const THD *thd, String *str) const {
   switch (type()) {
     case SEMIJOIN_HINT_ENUM: {

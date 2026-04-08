@@ -149,6 +149,8 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
 
 %token FORCE_HASH_JOIN 1051
 
+%token HJ_BUFFER_SIZE 1052
+
 
 /*
   Please add new tokens right above this line.
@@ -215,6 +217,10 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
   semijoin_strategy semijoin_strategies
   subquery_strategy
 
+%type <hint> hj_buffer_size_hint
+%type <hint_param_kv> hj_kv_pair
+%type <hint_param_kv_list> hj_kv_pair_list hj_kv_list
+
 %%
 
 
@@ -259,6 +265,55 @@ force_hash_join:
         }
         ;
 
+hj_buffer_size_hint:
+        HJ_BUFFER_SIZE '(' opt_qb_name hj_kv_list ')'
+        {
+            $$= NEW_PTN PT_hint_hj_buffer_size($3, $4);
+            if ($$ == nullptr)
+                YYABORT; // OOM
+        }
+        ;
+
+hj_kv_list:
+        '[' hj_kv_pair_list ']'
+        {
+            $$= $2;
+        }
+        ;
+
+hj_kv_pair_list:
+        hj_kv_pair
+        {
+            $$.init(thd->mem_root);
+            if ($$.push_back($1))
+                YYABORT; // OOM
+        }
+      | hj_kv_pair_list ',' hj_kv_pair
+        {
+            if ($1.push_back($3))
+                YYABORT; // OOM
+            $$= $1;
+        }
+        ;
+
+hj_kv_pair:
+        '(' HINT_ARG_NUMBER ',' HINT_ARG_NUMBER ')'
+        {
+            Hint_param_kv kv;
+            longlong key;
+            longlong value;
+            if (parse_int(&key, $2.str, $2.length) ||
+                parse_int(&value, $4.str, $4.length) ||
+                key < 0 || value < 0) {
+                scanner->syntax_warning(ER_THD(thd, ER_WARN_OPTIMIZER_HINT_SYNTAX_ERROR));
+                YYABORT;
+            }
+            kv.key= static_cast<ulonglong>(key);
+            kv.value= static_cast<ulonglong>(value);
+            $$= kv;
+        }
+        ;
+
 distribution_func:
         HINT_ARG_IDENT
         {
@@ -288,6 +343,7 @@ hint:
         | resource_group_hint
         | set_hash_join_distribution
         | force_hash_join
+        | hj_buffer_size_hint
         ;
 
 
