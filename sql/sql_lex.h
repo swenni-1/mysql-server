@@ -1185,6 +1185,9 @@ class Query_block : public Query_term {
           //SQL_I_LIST<ORDER> *group_by, SQL_I_LIST<ORDER> order_by
   */
   Query_block(MEM_ROOT *mem_root, Item *where, Item *having);
+  
+  Hint_param_kv_list *hj_buffer_size_list = nullptr;
+  bool hj_buffer_size_seen = false;
 
   /// Query_term methods overridden
   void debugPrint(int level, std::ostringstream &buf) const override;

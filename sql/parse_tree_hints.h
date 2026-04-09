@@ -51,6 +51,13 @@ struct Hint_param_table {
 typedef Mem_root_array_YY<LEX_CSTRING> Hint_param_index_list;
 typedef Mem_root_array_YY<Hint_param_table> Hint_param_table_list;
 
+struct Hint_param_kv {
+ ulonglong key;
+  ulonglong value;
+};
+
+typedef Mem_root_array_YY<Hint_param_kv> Hint_param_kv_list;
+
 /**
   The class is a base class for representation of the
   different types of the hints. For the complex hints
@@ -171,6 +178,25 @@ class PT_qb_level_hint : public PT_hint {
   */
   void append_args(const THD *thd, String *str) const override;
   virtual Hint_param_table_list *get_table_list() { return &table_list; }
+};
+
+/**
+  Parse tree hint object for HJ_BUFFER_SIZE hint.
+*/
+class PT_hint_hj_buffer_size : public PT_hint {
+  const LEX_CSTRING qb_name;
+  Hint_param_kv_list kv_list;
+
+  typedef PT_hint super;
+
+ public:
+  PT_hint_hj_buffer_size(const LEX_CSTRING qb_name_arg,
+                        const Hint_param_kv_list &kv_list_arg)
+      : PT_hint(MAX_HINT_ENUM, true),
+        qb_name(qb_name_arg),
+        kv_list(kv_list_arg) {}
+
+  bool do_contextualize(Parse_context *pc) override;
 };
 
 /**
