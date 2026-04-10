@@ -648,3 +648,69 @@ bool PT_hint_set_hash_join_distribution::do_contextualize(Parse_context *pc) {
 
   return false;
 }
+
+bool PT_hint_hash_join_actual_rows::do_contextualize(Parse_context *pc) {
+    Query_block *select = pc->select;
+  if (select == nullptr) return false;
+  if (select->hash_join_actual_rows_seen) {
+    print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, &qb_name, nullptr, nullptr,
+               this);
+    return false;
+  }
+  select->hash_join_actual_rows_seen = true;
+  
+  // Warn on duplicate keys; last value wins.
+  for (uint i = 0; i < kv_list.size(); ++i) {
+    for (uint j = i + 1; j < kv_list.size(); ++j) {
+      if (kv_list.at(i).key == kv_list.at(j).key) {
+        print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, &qb_name, nullptr,
+                   nullptr, this);
+        break;
+      }
+    }
+  }
+  select->hash_join_actual_rows_list = &kv_list;
+  return false;
+}
+
+bool PT_hint_hash_join_min_buffer_factor::do_contextualize(Parse_context *pc) {
+  Query_block *select = pc->select;
+  if (select == nullptr) return false;
+  
+  if (select->hash_join_min_buffer_factor_seen) {
+    print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, nullptr, nullptr, nullptr, this);
+    return false;
+  }
+  
+  if (m_min_buffer_factor < 0.0 || m_min_buffer_factor > 1.0) {
+    print_warn(pc->thd, ER_WARN_OPTIMIZER_HINT_SYNTAX_ERROR, nullptr, nullptr,
+               nullptr, this);
+    return false;
+  }
+  
+  select->hash_join_min_buffer_factor_seen = true;
+  select->hash_join_min_buffer_factor = m_min_buffer_factor;
+  
+  return false;
+}
+
+bool PT_hint_hash_join_weight_gap_factor::do_contextualize(Parse_context *pc) {
+  Query_block *select = pc->select;
+  if (select == nullptr) return false;
+
+  if (select->hash_join_weight_gap_factor_seen) {
+    print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, nullptr, nullptr, nullptr, this);
+    return false;
+  }
+  
+  if (m_weight_gap_factor < 0.0 || m_weight_gap_factor > 1.0) {
+    print_warn(pc->thd, ER_WARN_OPTIMIZER_HINT_SYNTAX_ERROR, nullptr, nullptr,
+               nullptr, this);
+    return false;
+  }
+  
+  select->hash_join_weight_gap_factor_seen = true;
+  select->hash_join_weight_gap_factor = m_weight_gap_factor;
+  
+  return false;
+}

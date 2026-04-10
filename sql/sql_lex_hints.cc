@@ -230,6 +230,9 @@ void Hint_scanner::add_hint_token_digest() {
           case SET_HASH_JOIN_DISTRIBUTION:
           case FORCE_HASH_JOIN:
           case HJ_BUFFER_SIZE:
+          case HASH_JOIN_ACTUAL_ROWS:
+          case HASH_JOIN_MIN_BUFFER_FACTOR:
+          case HASH_JOIN_WEIGHT_GAP_FACTOR:
             break;
           default:
             assert(false);

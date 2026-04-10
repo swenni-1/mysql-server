@@ -112,6 +112,8 @@ class Explain_format_tree : public Explain_format {
   void ExplainPrintCosts(const Json_object *obj, std::string *explain);
   void ExplainPrintExtra(const Json_object *obj, std::string *explain);
   void ExplainPrintBytesUsed(const Json_object *obj, std::string *explain);
+  void ExplainPrintBuildRowsInMem(const Json_object *obj, std::string *explain);
+  void ExplainPrintBuildRowsEstimate(const Json_object *obj, std::string *explain);
   void ExplainPrintSpilledToDisk(const Json_object *obj, std::string *explain);
   void ExplainPrintBufferFillRatio(const Json_object *obj, std::string *explain);
   void ExplainPrintBufferSize(const Json_object *obj, std::string *explain);

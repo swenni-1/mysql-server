@@ -6,7 +6,7 @@ enum class DistributionFunc {
   EQUAL,
   PUSH_UP,
   PUSH_DOWN,
-  CARDINALITYBASED
+  AUTO
 };
 
 inline std::string DistributionFuncToString(DistributionFunc distributionFunc) {
@@ -17,8 +17,8 @@ inline std::string DistributionFuncToString(DistributionFunc distributionFunc) {
       return "PUSH_UP";
     case DistributionFunc::PUSH_DOWN:
       return "PUSH_DOWN";
-    case DistributionFunc::CARDINALITYBASED:
-      return "CARDINALITYBASED";
+    case DistributionFunc::AUTO:
+      return "AUTO";
     default:
       return "UNKOWN";
   }
