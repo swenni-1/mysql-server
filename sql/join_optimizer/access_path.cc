@@ -1502,8 +1502,7 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
           } else {
             hash_join_iterator_max_memory = ComputeHashJoinMemoryBudget(
               thd->variables.join_buff_size, nodes, path, 
-              distribution,
-              top_join->query_block->hj_buffer_size_list
+              distribution, top_join->query_block->hj_buffer_size_list
             );
           }
         }
