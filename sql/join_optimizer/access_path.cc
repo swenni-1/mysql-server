@@ -980,11 +980,31 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
   if (top_join != nullptr &&
       top_join->query_block != nullptr &&
       (top_join->query_block->hj_buffer_size_list != nullptr ||
-      (top_join->query_block->opt_hints_qb != nullptr &&
-        top_join->query_block->opt_hints_qb->is_specified(
+        top_join->query_block->hash_join_actual_rows_list != nullptr || 
+        (top_join->query_block->opt_hints_qb != nullptr &&
+          top_join->query_block->opt_hints_qb->is_specified(
             SET_HASH_JOIN_DISTRIBUTION_ENUM)))) {
     // Distribution or Hardcoded buffer size hint was given.
     nodes = HashJoinDepthMap(top_path, thd);
+
+    if (top_join->query_block->hash_join_actual_rows_list != nullptr) {
+      std::unordered_map<size_t, double> actual_rows_by_depth;
+      actual_rows_by_depth.reserve(top_join->query_block->hash_join_actual_rows_list->size());
+      for (const auto &kv : *top_join->query_block->hash_join_actual_rows_list) {
+        actual_rows_by_depth[static_cast<size_t>(kv.key)] = static_cast<double>(kv.value);
+      }
+      for (auto &node : nodes) {
+        const auto hinted = actual_rows_by_depth.find(node.second.depth);
+        if (hinted == actual_rows_by_depth.end()) {
+          // no hint for this depth, keep existing estimate
+          continue;
+        }
+        // Update estimated build rows.
+        node.second.build_rows = hinted->second;
+        // Update estimated build hash bytes.
+        node.second.build_hash_bytes = hinted->second * node.second.bytes_per_row;
+      }
+    }
     
     if (top_join->query_block->opt_hints_qb != nullptr &&
         top_join->query_block->opt_hints_qb->is_specified(

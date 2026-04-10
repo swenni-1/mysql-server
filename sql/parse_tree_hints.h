@@ -200,6 +200,25 @@ class PT_hint_hj_buffer_size : public PT_hint {
 };
 
 /**
+  Parse tree hint object for HASH_JOIN_ACTUAL_ROWS hint.
+*/
+class PT_hint_hash_join_actual_rows : public PT_hint {
+    const LEX_CSTRING qb_name;
+  Hint_param_kv_list kv_list;
+
+  typedef PT_hint super;
+
+ public:
+  PT_hint_hash_join_actual_rows(const LEX_CSTRING qb_name_arg,
+                        const Hint_param_kv_list &kv_list_arg)
+      : PT_hint(MAX_HINT_ENUM, true),
+        qb_name(qb_name_arg),
+        kv_list(kv_list_arg) {}
+
+  bool do_contextualize(Parse_context *pc) override;
+};
+
+/**
   Parse tree hint object for table level hints.
 */
 

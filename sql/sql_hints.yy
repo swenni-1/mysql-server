@@ -151,6 +151,7 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
 
 %token HJ_BUFFER_SIZE 1052
 
+%token HASH_JOIN_ACTUAL_ROWS 1053
 
 /*
   Please add new tokens right above this line.
@@ -218,6 +219,7 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
   subquery_strategy
 
 %type <hint> hj_buffer_size_hint
+%type <hint> hash_join_actual_rows_hint
 %type <hint_param_kv> hj_kv_pair
 %type <hint_param_kv_list> hj_kv_pair_list hj_kv_list
 
@@ -269,6 +271,15 @@ hj_buffer_size_hint:
         HJ_BUFFER_SIZE '(' opt_qb_name hj_kv_list ')'
         {
             $$= NEW_PTN PT_hint_hj_buffer_size($3, $4);
+            if ($$ == nullptr)
+                YYABORT; // OOM
+        }
+        ;
+
+hash_join_actual_rows_hint:
+        HASH_JOIN_ACTUAL_ROWS '(' opt_qb_name hj_kv_list ')'
+        {
+            $$ = NEW_PTN PT_hint_hash_join_actual_rows($3, $4);
             if ($$ == nullptr)
                 YYABORT; // OOM
         }
@@ -344,6 +355,7 @@ hint:
         | set_hash_join_distribution
         | force_hash_join
         | hj_buffer_size_hint
+        | hash_join_actual_rows_hint
         ;
 
 

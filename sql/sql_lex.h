@@ -1189,6 +1189,9 @@ class Query_block : public Query_term {
   Hint_param_kv_list *hj_buffer_size_list = nullptr;
   bool hj_buffer_size_seen = false;
 
+  Hint_param_kv_list *hash_join_actual_rows_list = nullptr;
+  bool hash_join_actual_rows_seen = false;
+
   /// Query_term methods overridden
   void debugPrint(int level, std::ostringstream &buf) const override;
   /// Minion of debugPrint
