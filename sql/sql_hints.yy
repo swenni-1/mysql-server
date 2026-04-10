@@ -61,6 +61,37 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
   return error != 0 || end != from + from_length;
 }
 
+// Taken from previous master thesis.
+#include <cerrno>
+#include <cstring>
+
+static bool parse_double(double *to, const char *from, size_t from_length)
+{
+    // Create a temporary buffer and null-terminate it
+    char buffer[64];
+    if (from_length >= sizeof(buffer)) {
+        char *buf = new char[from_length + 1];
+        memcpy(buf, from, from_length);
+        buf[from_length] = '\0';
+        errno = 0;
+        char *end;
+        double val = strtod(buf, &end);
+        bool error = (errno != 0 || end != buf + from_length);
+        delete [] buf;
+        *to = val;
+        return error;
+    } else {
+        memcpy(buffer, from, from_length);
+        buffer[from_length] = '\0';
+        errno = 0;
+        char *end;
+        double val = strtod(buffer, &end);
+        bool error = (errno != 0 || end != buffer + from_length);
+        *to = val;
+        return error;
+    }
+}
+
 // ODR violation here as well, so rename yysymbol_kind_t
 #define yysymbol_kind_t my_hint_parser_symbol_kind_t
 
@@ -146,12 +177,11 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
 */
 
 %token SET_HASH_JOIN_DISTRIBUTION 1050
-
 %token FORCE_HASH_JOIN 1051
-
 %token HJ_BUFFER_SIZE 1052
-
 %token HASH_JOIN_ACTUAL_ROWS 1053
+%token HASH_JOIN_MIN_BUFFER_FACTOR 1054
+%token HASH_JOIN_WEIGHT_GAP_FACTOR 1055
 
 /*
   Please add new tokens right above this line.
@@ -177,6 +207,9 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
   resource_group_hint
   set_hash_join_distribution
   force_hash_join
+  hash_join_actual_rows
+  hash_join_min_buffer_factor
+  hash_join_weight_gap_factor
 
 %type <num> distribution_func
 
@@ -222,6 +255,9 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
 %type <hint> hash_join_actual_rows_hint
 %type <hint_param_kv> hj_kv_pair
 %type <hint_param_kv_list> hj_kv_pair_list hj_kv_list
+
+%type <hint> hash_join_min_buffer_factor_hint
+%type <hint> hash_join_weight_gap_factor_hint
 
 %%
 
@@ -344,6 +380,28 @@ distribution_func:
         }
         ;
 
+hash_join_min_buffer_factor_hint:
+      HASH_JOIN_MIN_BUFFER_FACTOR '(' HINT_ARG_FLOATING_POINT_NUMBER ')' {
+          double factor;
+          if (parse_double(&factor, $3.str, $3.length))
+             YYABORT;
+          $$ = NEW_PTN PT_hint_hash_join_min_buffer_factor(factor);
+          if ($$ == NULL)
+              YYABORT;
+      }
+      ;
+
+hash_join_weight_gap_factor_hint:
+      HASH_JOIN_WEIGHT_GAP_FACTOR '(' HINT_ARG_FLOATING_POINT_NUMBER ')' {
+          double factor;
+          if (parse_double(&factor, $3.str, $3.length))
+             YYABORT;
+          $$ = NEW_PTN PT_hint_hash_join_weight_gap_factor(factor);
+          if ($$ == NULL)
+              YYABORT;
+      }
+      ;
+
 hint:
           index_level_hint
         | table_level_hint
@@ -356,6 +414,8 @@ hint:
         | force_hash_join
         | hj_buffer_size_hint
         | hash_join_actual_rows_hint
+        | hash_join_min_buffer_factor_hint
+        | hash_join_weight_gap_factor_hint
         ;
 
 

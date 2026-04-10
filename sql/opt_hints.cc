@@ -87,7 +87,9 @@ struct st_opt_hint_info opt_hint_info[] = {
     {"ORDER_INDEX", false, false, false},
     {"DERIVED_CONDITION_PUSHDOWN", true, true, false},
     {"SET_HASH_JOIN_DISTRIBUTION", true, false, false},
-    {"FORCE_HASH_JOIN", false, true, false},  
+    {"FORCE_HASH_JOIN", false, true, false},
+    {"HASH_JOIN_MIN_BUFFER_FACTOR", true, true, false},
+    {"HASH_JOIN_WEIGHT_GAP_FACTOR", true, true, false},
     {nullptr, false, false, false}};
 
 /**

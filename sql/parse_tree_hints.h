@@ -219,6 +219,34 @@ class PT_hint_hash_join_actual_rows : public PT_hint {
 };
 
 /**
+  Parse tree hint object for HASH_JOIN_MIN_BUFFER_FACTOR hint.
+*/
+class PT_hint_hash_join_min_buffer_factor : public PT_hint {
+public:
+    PT_hint_hash_join_min_buffer_factor(double factor)
+        : PT_hint(HASH_JOIN_MIN_BUFFER_FACTOR_ENUM, true), m_min_buffer_factor(factor) { }
+
+    bool do_contextualize(Parse_context *pc) override;
+
+  private:
+    double m_min_buffer_factor;
+};
+
+/**
+  Parse tree hint object for HASH_JOIN_WEIGHT_GAP_FACTOR hint.
+*/
+class PT_hint_hash_join_weight_gap_factor : public PT_hint {
+public:
+    PT_hint_hash_join_weight_gap_factor(double factor)
+        : PT_hint(HASH_JOIN_WEIGHT_GAP_FACTOR_ENUM, true), m_weight_gap_factor(factor) { }
+
+    bool do_contextualize(Parse_context *pc) override;
+
+  private:
+    double m_weight_gap_factor;
+};
+
+/**
   Parse tree hint object for table level hints.
 */
 

@@ -733,16 +733,15 @@ struct HashJoinNodeInfo {
 // Currently using estiamted build bytes as weights.
 static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudgetAuto(
     size_t join_buffer_size,
-    std::unordered_map<const AccessPath *, HashJoinNodeInfo> &nodes) {
+    std::unordered_map<const AccessPath *, HashJoinNodeInfo> &nodes,
+    double min_buffer_factor, double weight_gap_factor) {
   std::unordered_map<const AccessPath *, size_t> budgets;
   budgets.reserve(nodes.size());
 
-  // Each join keeps at least 5% of original buffer size.
-  // const double min_buffer_fraction = 0.05;
-  // const double per_join_min = join_buffer_size * min_buffer_fraction;
+  const double per_join_min = join_buffer_size * min_buffer_factor;
 
   // Minimum join buffer found from benchmarks.
-  double per_join_min = 20512; 
+  // double per_join_min = 20512; 
 
   // Sum of estiamted bytes.
   double sum_weights = 0.0;
@@ -762,12 +761,11 @@ static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudge
   }
   
   // Calculate memory pool to distribute.
-  // const size_t distributable = static_cast<size_t>(join_buffer_size * (1.0 - min_buffer_fraction));
-  const size_t distributable = join_buffer_size - per_join_min;
-  size_t mem_pool = nodes.size() * distributable;
-  const double wg_factor = 1;
-  size_t weight_pool = static_cast<size_t>(mem_pool * wg_factor);
-  size_t gap_pool = static_cast<size_t>(mem_pool * (1 - wg_factor));
+  const double distributable = join_buffer_size - per_join_min;
+  const double mem_pool = nodes.size() * distributable;
+  // By default weight_gap_factor is 1, meaning only weight_pool has memory.
+  size_t weight_pool = static_cast<size_t>(mem_pool * weight_gap_factor);
+  size_t gap_pool = static_cast<size_t>(mem_pool * (1 - weight_gap_factor));
   
   fprintf(stderr, "weight_pool=%ld, gap_pool=%ld\n", weight_pool, gap_pool);
 
@@ -1026,7 +1024,12 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
     }
     if (distribution == DistributionFunc::AUTO) {
       // Distribution hint was given as AUTO.
-      hash_join_budgets = ComputeHashJoinMemoryBudgetAuto(thd->variables.join_buff_size, nodes);
+      double min_buffer_factor = top_join->query_block->hash_join_min_buffer_factor;
+      double weight_gap_factor = top_join->query_block->hash_join_weight_gap_factor;
+
+      hash_join_budgets = ComputeHashJoinMemoryBudgetAuto(
+        thd->variables.join_buff_size, 
+        nodes, min_buffer_factor, weight_gap_factor);
     }
   }
 
