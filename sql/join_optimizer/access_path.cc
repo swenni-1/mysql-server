@@ -974,25 +974,44 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
 
   std::unordered_map<const AccessPath *, HashJoinNodeInfo> nodes;
   std::unordered_map<const AccessPath *, size_t> hash_join_budgets;
-  std::optional<DistributionFunc> distribution;
+  DistributionFunc distribution = DistributionFunc::EQUAL;
 
-  // Only count hash join if distribution or hardcoded buffer size hint is given.
-  if (top_join != nullptr &&
-      top_join->query_block != nullptr &&
-      (top_join->query_block->hj_buffer_size_list != nullptr ||
-        top_join->query_block->hash_join_actual_rows_list != nullptr || 
-        (top_join->query_block->opt_hints_qb != nullptr &&
-          top_join->query_block->opt_hints_qb->is_specified(
-            SET_HASH_JOIN_DISTRIBUTION_ENUM)))) {
-    // Distribution or Hardcoded buffer size hint was given.
+  bool hash_join_buffer_size_hint = false;
+  bool hash_join_actual_rows_hint = false;
+  bool hash_join_distribution_hint = false;
+
+  if (top_join != nullptr && top_join->query_block != nullptr) {
+    // Is hash join buffer size hint given.
+    hash_join_buffer_size_hint = top_join->query_block->hj_buffer_size_list != nullptr;
+    // Is hash join actual rows hint given.
+    hash_join_actual_rows_hint = top_join->query_block->hash_join_actual_rows_list != nullptr;
+
+    if (top_join->query_block->opt_hints_qb != nullptr) {
+      // Is hash join distribution hint given.
+      hash_join_distribution_hint = top_join->query_block->opt_hints_qb != nullptr &&
+          top_join->query_block->opt_hints_qb->is_specified(SET_HASH_JOIN_DISTRIBUTION_ENUM);
+      
+      if (hash_join_distribution_hint) {
+        // Update distribution mode if hint was given.
+        distribution = top_join->query_block->opt_hints_qb->hash_join_distribution();
+      }
+    }
+  }
+
+  // Check if any of the hints was given.
+  if (hash_join_buffer_size_hint || hash_join_actual_rows_hint || hash_join_distribution_hint) {
+    // Hint was given, and we need the depth of the hash joins.
     nodes = HashJoinDepthMap(top_path, thd);
 
-    if (top_join->query_block->hash_join_actual_rows_list != nullptr) {
+    if (hash_join_actual_rows_hint) {
+      // Actual rows hint was given thus we need to update the estimated build rows and build hash bytes.
       std::unordered_map<size_t, double> actual_rows_by_depth;
       actual_rows_by_depth.reserve(top_join->query_block->hash_join_actual_rows_list->size());
+
       for (const auto &kv : *top_join->query_block->hash_join_actual_rows_list) {
         actual_rows_by_depth[static_cast<size_t>(kv.key)] = static_cast<double>(kv.value);
       }
+
       for (auto &node : nodes) {
         const auto hinted = actual_rows_by_depth.find(node.second.depth);
         if (hinted == actual_rows_by_depth.end()) {
@@ -1005,16 +1024,9 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
         node.second.build_hash_bytes = hinted->second * node.second.bytes_per_row;
       }
     }
-    
-    if (top_join->query_block->opt_hints_qb != nullptr &&
-        top_join->query_block->opt_hints_qb->is_specified(
-            SET_HASH_JOIN_DISTRIBUTION_ENUM)) {
-      // Distribution hint was given.
-      distribution = top_join->query_block->opt_hints_qb->hash_join_distribution();
-      if (distribution == DistributionFunc::AUTO) {
-        // Distribution hint was given as AUTO.
-        hash_join_budgets = ComputeHashJoinMemoryBudgetAuto(thd->variables.join_buff_size, nodes);
-      }
+    if (distribution == DistributionFunc::AUTO) {
+      // Distribution hint was given as AUTO.
+      hash_join_budgets = ComputeHashJoinMemoryBudgetAuto(thd->variables.join_buff_size, nodes);
     }
   }
 
@@ -1490,7 +1502,7 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
           } else {
             hash_join_iterator_max_memory = ComputeHashJoinMemoryBudget(
               thd->variables.join_buff_size, nodes, path, 
-              top_join->query_block->opt_hints_qb->hash_join_distribution(),
+              distribution,
               top_join->query_block->hj_buffer_size_list
             );
           }
