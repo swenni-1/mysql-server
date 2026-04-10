@@ -365,6 +365,10 @@ class HashJoinIterator final : public RowIterator {
     return m_build_bytes_needed_at_spill != 0 ? m_build_bytes_needed_at_spill
                                               : m_row_buffer.UsedMemoryBytes();
   }
+
+  size_t RowsInMemory() const {
+    return m_row_buffer.NumOfRows();
+  }
   
  private:
   bool DoInit() override;

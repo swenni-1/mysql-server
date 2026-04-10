@@ -1645,6 +1645,7 @@ static unique_ptr<Json_object> SetObjectMembers(
         double fill_ratio = 0.0;
         size_t buffer_size = 0;
         size_t bytes_used = 0;
+        size_t build_rows_in_memory = 0;
         if (path->iterator != nullptr) {
           const RowIterator *it = path->iterator->real_iterator();
           if (const auto *hash_join = dynamic_cast<const HashJoinIterator *>(it)) {
@@ -1652,12 +1653,17 @@ static unique_ptr<Json_object> SetObjectMembers(
             fill_ratio = hash_join->BufferFillRatio();
             buffer_size = hash_join->BufferSize();
             bytes_used = hash_join->BuildMemoryRequiredBytes();
+            build_rows_in_memory = hash_join->RowsInMemory();
           }
         }
+        double build_rows_estimate = path->hash_join().inner->num_output_rows();
+
         error |= AddMemberToObject<Json_boolean>(obj, "spilled_to_disk", spilled);
         error |= AddMemberToObject<Json_double>(obj, "fill_ratio", fill_ratio);
         error |= AddMemberToObject<Json_uint>(obj, "buffer_size", buffer_size);
         error |= AddMemberToObject<Json_uint>(obj, "bytes_used", bytes_used);
+        error |= AddMemberToObject<Json_uint>(obj, "build_rows_in_memory", build_rows_in_memory);
+        error |= AddMemberToObject<Json_double>(obj, "build_rows_estimate", build_rows_estimate);
       }
 
       children->push_back({path->hash_join().outer});
@@ -2504,6 +2510,8 @@ void Explain_format_tree::ExplainPrintExtra(const Json_object *obj, string *expl
   ExplainPrintBufferFillRatio(obj, explain);
   ExplainPrintBufferSize(obj, explain);
   ExplainPrintBytesUsed(obj, explain);
+  ExplainPrintBuildRowsInMem(obj, explain);
+  ExplainPrintBuildRowsEstimate(obj, explain);
 }
 
 void Explain_format_tree::ExplainPrintSpilledToDisk(const Json_object *obj, string *explain) {  
@@ -2546,6 +2554,26 @@ void Explain_format_tree::ExplainPrintBytesUsed(const Json_object *obj, string *
   *explain += " (bytes_used=";
   *explain += FormatNumberReadably(bytes_used);
   *explain += ")";
+}
+
+void Explain_format_tree::ExplainPrintBuildRowsInMem(const Json_object *obj, string *explain) {
+  const Json_dom *rows_dom = obj->get("build_rows_in_memory");
+  if (rows_dom == nullptr || rows_dom->json_type() != enum_json_type::J_UINT) return;
+
+  const size_t build_rows_in_memory = down_cast<const Json_uint *>(rows_dom)->value(); 
+  *explain += " (build_rows_in_memory=";
+  *explain += FormatNumberReadably(build_rows_in_memory);
+  *explain +=")";
+}
+
+void Explain_format_tree::ExplainPrintBuildRowsEstimate(const Json_object *obj, string *explain) {
+  const Json_dom *rows_est_dom = obj->get("build_rows_estimate");
+  if (rows_est_dom == nullptr || rows_est_dom->json_type() != enum_json_type::J_DOUBLE) return;
+
+  const size_t build_rows_estimate = GetJSONDouble(obj, "build_rows_estimate");
+  *explain += " (build_rows_estimate=";
+  *explain += FormatNumberReadably(build_rows_estimate);
+  *explain +=")";
 }
 
 /*
