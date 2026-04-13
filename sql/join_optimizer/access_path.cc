@@ -29,6 +29,7 @@
 #include <memory>
 #include <span>
 #include <stack>
+#include <unordered_map>
 #include <vector>
 
 #include "mem_root_deque.h"
@@ -725,10 +726,29 @@ static double BuildSideReadSetWidth(THD *thd, const AccessPath *build_root) {
 
 struct HashJoinNodeInfo {
   size_t depth;
+  // If there are multiple hash joins at the same depth (bushy plans), we need
+  // a deterministic way to distinguish them. Ordinal is assigned during the
+  // access path traversal and is per depth.
+  size_t ordinal;
   double build_rows;
   double bytes_per_row;
   double build_hash_bytes;
 };
+
+using HashJoinBufferSizeMap = std::unordered_map<size_t, std::vector<size_t>>;
+
+static HashJoinBufferSizeMap BuildHashJoinBufferSizeMap(
+    const Hint_param_kv_list *hj_buffer_size_list) {
+  HashJoinBufferSizeMap buffer_sizes;
+  if (hj_buffer_size_list == nullptr) return buffer_sizes;
+
+  for (const auto &entry : *hj_buffer_size_list) {
+    buffer_sizes[static_cast<size_t>(entry.key)].push_back(
+        static_cast<size_t>(entry.value));
+  }
+
+  return buffer_sizes;
+}
 
 // Currently using estiamted build bytes as weights.
 static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudgetAuto(
@@ -829,15 +849,20 @@ static size_t ComputeHashJoinMemoryBudget(
     const AccessPath *path,
     DistributionFunc distribution_mode,
     const Hint_param_kv_list *hj_buffer_size_list) {
-  const size_t depth = nodes.at(path).depth;
+  const HashJoinNodeInfo &info = nodes.at(path);
+  const size_t depth = info.depth;
   fprintf(stderr, "depth=%lu\n", depth);
 
   if (hj_buffer_size_list != nullptr) {
-    for (const auto &entry : *hj_buffer_size_list) {
-      if (entry.key == depth) {
-        return entry.value;
-      }
+    // Interpret HJ_BUFFER_SIZE as a per-depth list. For depth D, the first
+    // hash join encountered gets the first value, the second gets the next, etc.
+    const HashJoinBufferSizeMap buffer_sizes =
+        BuildHashJoinBufferSizeMap(hj_buffer_size_list);
+    const auto it = buffer_sizes.find(depth);
+    if (it != buffer_sizes.end() && info.ordinal < it->second.size()) {
+      return it->second[info.ordinal];
     }
+    // User-requested fallback.
     return depth;
   }
 
@@ -877,6 +902,8 @@ static std::unordered_map<const AccessPath *, HashJoinNodeInfo> HashJoinDepthMap
   std::unordered_map<const AccessPath *, HashJoinNodeInfo> nodes;
   if (root == nullptr) return nodes;
 
+  std::unordered_map<size_t, size_t> depth_ordinals;
+
   struct Frame {
     const AccessPath *path;
     size_t depth;
@@ -891,11 +918,13 @@ static std::unordered_map<const AccessPath *, HashJoinNodeInfo> HashJoinDepthMap
     const AccessPath *path = f.path;
 
     if (path->type == AccessPath::HASH_JOIN) {
+      const size_t ordinal = depth_ordinals[f.depth]++;
       double build_rows = path->hash_join().inner->num_output_rows();
       double bytes_per_row = BuildSideReadSetWidth(thd, path->hash_join().inner);
       double build_hash_bytes = build_rows * bytes_per_row;
       
-      nodes.emplace(path, HashJoinNodeInfo{f.depth, build_rows, bytes_per_row, build_hash_bytes});
+      nodes.emplace(path, HashJoinNodeInfo{f.depth, ordinal, build_rows,
+                                          bytes_per_row, build_hash_bytes});
     }
 
     switch (path->type) {

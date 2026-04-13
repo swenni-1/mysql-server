@@ -299,16 +299,6 @@ bool PT_hint_hj_buffer_size::do_contextualize(Parse_context *pc) {
     return false;
   }
   select->hj_buffer_size_seen = true;
-  // Warn on duplicate keys; last value wins.
-  for (uint i = 0; i < kv_list.size(); ++i) {
-    for (uint j = i + 1; j < kv_list.size(); ++j) {
-      if (kv_list.at(i).key == kv_list.at(j).key) {
-        print_warn(pc->thd, ER_WARN_CONFLICTING_HINT, &qb_name, nullptr,
-                   nullptr, this);
-        break;
-      }
-    }
-  }
   select->hj_buffer_size_list = &kv_list;
   return false;
 }
