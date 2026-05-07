@@ -207,9 +207,9 @@ static bool parse_double(double *to, const char *from, size_t from_length)
   resource_group_hint
   set_hash_join_distribution
   force_hash_join
-  hash_join_actual_rows
-  hash_join_min_buffer_factor
-  hash_join_weight_gap_factor
+  hash_join_actual_rows_hint
+  hash_join_min_buffer_factor_hint
+  hash_join_weight_gap_factor_hint
 
 %type <num> distribution_func
 
@@ -252,12 +252,8 @@ static bool parse_double(double *to, const char *from, size_t from_length)
   subquery_strategy
 
 %type <hint> hj_buffer_size_hint
-%type <hint> hash_join_actual_rows_hint
 %type <hint_param_kv> hj_kv_pair
 %type <hint_param_kv_list> hj_kv_pair_list hj_kv_list
-
-%type <hint> hash_join_min_buffer_factor_hint
-%type <hint> hash_join_weight_gap_factor_hint
 
 %%
 

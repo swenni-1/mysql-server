@@ -726,28 +726,24 @@ static double BuildSideReadSetWidth(THD *thd, const AccessPath *build_root) {
 
 struct HashJoinNodeInfo {
   size_t depth;
-  // If there are multiple hash joins at the same depth (bushy plans), we need
-  // a deterministic way to distinguish them. Ordinal is assigned during the
-  // access path traversal and is per depth.
   size_t ordinal;
   double build_rows;
   double bytes_per_row;
   double build_hash_bytes;
 };
 
-using HashJoinBufferSizeMap = std::unordered_map<size_t, std::vector<size_t>>;
+using HashJoinHintMap = std::unordered_map<size_t, std::vector<size_t>>;
 
-static HashJoinBufferSizeMap BuildHashJoinBufferSizeMap(
-    const Hint_param_kv_list *hj_buffer_size_list) {
-  HashJoinBufferSizeMap buffer_sizes;
-  if (hj_buffer_size_list == nullptr) return buffer_sizes;
+static HashJoinHintMap BuildHashJoinHintMap(
+    const Hint_param_kv_list *hint_value_list) {
+  HashJoinHintMap map;
+  if (hint_value_list == nullptr) return map;
 
-  for (const auto &entry : *hj_buffer_size_list) {
-    buffer_sizes[static_cast<size_t>(entry.key)].push_back(
-        static_cast<size_t>(entry.value));
+  for (const auto &entry : *hint_value_list) {
+    map[static_cast<size_t>(entry.key)].push_back(static_cast<size_t>(entry.value));
   }
 
-  return buffer_sizes;
+  return map;
 }
 
 // Currently using estiamted build bytes as weights.
@@ -816,6 +812,8 @@ static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudge
     }
   }
 
+  double gap_remainder = 0;
+
   // If we have a gap pool give it to the smallest gap.
   if (gap_pool > 0) {
     std::sort(allocs.begin(), allocs.end(),
@@ -831,41 +829,31 @@ static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudge
       gap_pool -= static_cast<size_t>(add);
       a.gap -= add;
     }
+    // If all gaps are closed, but gap pool still has memory, this memory is unused.
+    // Insted we divide it equally among all hash joins.
+    if (gap_pool > 0) {
+      gap_remainder = gap_pool / nodes.size();
+    }
   }
 
   // Final budgets + prints
   for (const auto &a : allocs) {
     const auto &info = nodes.at(a.path);
-    const size_t chosen_buffer_size = static_cast<size_t>(per_join_min) + static_cast<size_t>(a.base_alloc);
+    const size_t chosen_buffer_size = static_cast<size_t>(per_join_min + a.base_alloc + gap_remainder);
     budgets[a.path] = chosen_buffer_size;
     fprintf(stderr, "new_buffer_size=%zu, build_rows=%f, bytes_per_row=%f, depth=%zu\n", chosen_buffer_size, info.build_rows, info.bytes_per_row, info.depth);
   }
   return budgets;
 }
 
-static size_t ComputeHashJoinMemoryBudget(
+static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudget(
     size_t join_buffer_size,
     const std::unordered_map<const AccessPath *, HashJoinNodeInfo> &nodes,
-    const AccessPath *path,
-    DistributionFunc distribution_mode,
-    const Hint_param_kv_list *hj_buffer_size_list) {
-  const HashJoinNodeInfo &info = nodes.at(path);
-  const size_t depth = info.depth;
-  fprintf(stderr, "depth=%lu\n", depth);
-
-  if (hj_buffer_size_list != nullptr) {
-    // Interpret HJ_BUFFER_SIZE as a per-depth list. For depth D, the first
-    // hash join encountered gets the first value, the second gets the next, etc.
-    const HashJoinBufferSizeMap buffer_sizes =
-        BuildHashJoinBufferSizeMap(hj_buffer_size_list);
-    const auto it = buffer_sizes.find(depth);
-    if (it != buffer_sizes.end() && info.ordinal < it->second.size()) {
-      return it->second[info.ordinal];
-    }
-    // User-requested fallback.
-    return depth;
-  }
-
+    DistributionFunc distribution_mode) {
+  std::unordered_map<const AccessPath *, size_t> budgets;
+  budgets.reserve(nodes.size());
+  
+  // Find max depth.
   size_t max_depth = 0;
   for (const auto &entry : nodes) {
     max_depth = std::max(max_depth, entry.second.depth);
@@ -873,32 +861,42 @@ static size_t ComputeHashJoinMemoryBudget(
 
   auto weight_for_depth = [&](size_t depth_of_node) -> size_t {
     switch (distribution_mode) {
-      case DistributionFunc::EQUAL:
-        return 1;
       case DistributionFunc::PUSH_DOWN:
-        return std::pow(depth_of_node + 1, 1.3);
+        return depth_of_node + 1;
       case DistributionFunc::PUSH_UP:
         return (max_depth - depth_of_node + 1);
-      case DistributionFunc::AUTO:
+      default:
         return 1;
     }
-    return 1;
   };
 
+  // Find sum of depths.
   size_t sum_weights = 0;
   for (const auto &entry : nodes) {
     sum_weights += weight_for_depth(entry.second.depth);
   }
 
-  const size_t total_budget = nodes.size() * join_buffer_size;
-  const size_t weight = weight_for_depth(depth);
-  
-  return (total_budget * weight) / sum_weights;
+  if (sum_weights > 0 && max_depth > 0) {
+    const size_t total_budget = nodes.size() * join_buffer_size;
+    for (const auto &node : nodes) {
+      // Calcualte and set the new buffer sizes.
+      const auto &info = node.second;
+      const size_t weight = weight_for_depth(info.depth);
+      const size_t new_buffer_size = (total_budget * weight) / sum_weights;
+      budgets[node.first] = new_buffer_size;
+    }
+  } else {
+    // Fallback to default join buffer sizes.
+    for (const auto &node : nodes) {
+      budgets[node.first] = join_buffer_size;
+    }
+  }
+  return budgets;  
 }
 
-
 // Rename function?
-static std::unordered_map<const AccessPath *, HashJoinNodeInfo> HashJoinDepthMap(const AccessPath *root, THD *thd) {
+static std::unordered_map<const AccessPath *, HashJoinNodeInfo> HashJoinNodeMap(
+  const AccessPath *root, THD *thd) {
   std::unordered_map<const AccessPath *, HashJoinNodeInfo> nodes;
   if (root == nullptr) return nodes;
 
@@ -1015,8 +1013,8 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
 
     if (top_join->query_block->opt_hints_qb != nullptr) {
       // Is hash join distribution hint given.
-      hash_join_distribution_hint = top_join->query_block->opt_hints_qb != nullptr &&
-          top_join->query_block->opt_hints_qb->is_specified(SET_HASH_JOIN_DISTRIBUTION_ENUM);
+      hash_join_distribution_hint = 
+        top_join->query_block->opt_hints_qb->is_specified(SET_HASH_JOIN_DISTRIBUTION_ENUM);
       
       if (hash_join_distribution_hint) {
         // Update distribution mode if hint was given.
@@ -1028,37 +1026,79 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
   // Check if any of the hints was given.
   if (hash_join_buffer_size_hint || hash_join_actual_rows_hint || hash_join_distribution_hint) {
     // Hint was given, and we need the depth of the hash joins.
-    nodes = HashJoinDepthMap(top_path, thd);
+    nodes = HashJoinNodeMap(top_path, thd);
 
     if (hash_join_actual_rows_hint) {
-      // Actual rows hint was given thus we need to update the estimated build rows and build hash bytes.
-      std::unordered_map<size_t, double> actual_rows_by_depth;
-      actual_rows_by_depth.reserve(top_join->query_block->hash_join_actual_rows_list->size());
+      // Actual rows hint was given.
+      // We need to update the estimated build rows and build hash bytes.
+      const HashJoinHintMap actual_rows_by_depth = BuildHashJoinHintMap(
+        top_join->query_block->hash_join_actual_rows_list
+      );
 
-      for (const auto &kv : *top_join->query_block->hash_join_actual_rows_list) {
-        actual_rows_by_depth[static_cast<size_t>(kv.key)] = static_cast<double>(kv.value);
-      }
-
+      // Get the values and actually update the estimates.
       for (auto &node : nodes) {
-        const auto hinted = actual_rows_by_depth.find(node.second.depth);
-        if (hinted == actual_rows_by_depth.end()) {
-          // no hint for this depth, keep existing estimate
+        auto &info = node.second;
+        const auto it = actual_rows_by_depth.find(info.depth);
+        if (it == actual_rows_by_depth.end()) {
+          // No hint value for this depth.
           continue;
         }
-        // Update estimated build rows.
-        node.second.build_rows = hinted->second;
-        // Update estimated build hash bytes.
-        node.second.build_hash_bytes = hinted->second * node.second.bytes_per_row;
+
+        const auto &rows_for_depth = it->second;
+        if (info.ordinal >= rows_for_depth.size()) {
+          // No hint value for this ordinal.
+          continue;
+        }
+
+        const auto rows = rows_for_depth[info.ordinal];
+        // Update estimated rows.
+        info.build_rows = rows;
+        // Update estimated build bytes.
+        info.build_hash_bytes = rows * info.bytes_per_row;
       }
     }
+
     if (distribution == DistributionFunc::AUTO) {
       // Distribution hint was given as AUTO.
+      // Gets the min_buffer_factor (default = 0.1).
       double min_buffer_factor = top_join->query_block->hash_join_min_buffer_factor;
+      // Gets the weight_gap_factor (default = 1).
       double weight_gap_factor = top_join->query_block->hash_join_weight_gap_factor;
 
       hash_join_budgets = ComputeHashJoinMemoryBudgetAuto(
         thd->variables.join_buff_size, 
         nodes, min_buffer_factor, weight_gap_factor);
+    } else if (distribution == DistributionFunc::PUSH_DOWN || distribution == DistributionFunc::PUSH_UP) {
+      // Distribution hint was given as PUSH_DOWN or PUSH_UP.
+      hash_join_budgets = ComputeHashJoinMemoryBudget(
+        thd->variables.join_buff_size, nodes, distribution
+      );
+    }
+
+    if (hash_join_buffer_size_hint) {
+      // Hint was given and we need to create a map from the given values.
+      const HashJoinHintMap given_buffer_sizes = BuildHashJoinHintMap(
+        top_join->query_block->hj_buffer_size_list
+      );
+
+      // Updates the budgets with the given buffer values.
+      for (auto &node: nodes) {
+        auto &info = node.second;
+        const auto it = given_buffer_sizes.find(info.depth);
+        
+        // Fallback value. Set for debugging should be join_buffer_size for usability. 
+        size_t buffer_size = info.depth;
+
+        if (it != given_buffer_sizes.end()) {
+          const auto &buffer_sizes_for_depth = it->second;
+          if (info.ordinal < buffer_sizes_for_depth.size()) {
+            buffer_size = buffer_sizes_for_depth[info.ordinal];
+          }
+        }
+
+        // Add the new buffer size to budget.
+        hash_join_budgets[node.first] = buffer_size;
+      }
     }
   }
 
@@ -1528,15 +1568,8 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
 
         // Intercept max memory and change it here:
         size_t hash_join_iterator_max_memory = thd->variables.join_buff_size;
-        if (!nodes.empty()) {
-          if (!hash_join_budgets.empty()) {
-            hash_join_iterator_max_memory = hash_join_budgets.at(path);
-          } else {
-            hash_join_iterator_max_memory = ComputeHashJoinMemoryBudget(
-              thd->variables.join_buff_size, nodes, path, 
-              distribution, top_join->query_block->hj_buffer_size_list
-            );
-          }
+        if (!nodes.empty() && !hash_join_budgets.empty()) {
+          hash_join_iterator_max_memory = hash_join_budgets.at(path);
         }
 
         iterator = NewIterator<HashJoinIterator>(
