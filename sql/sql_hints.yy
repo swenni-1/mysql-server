@@ -61,7 +61,8 @@ static bool parse_int(longlong *to, const char *from, size_t from_length)
   return error != 0 || end != from + from_length;
 }
 
-// Taken from previous master thesis.
+// Function taken from Johan Solbakken and Morten Tobias Rinde Sunde master thesis.
+// Avilable at: https://github.com/johansolbakken/mysql-server
 #include <cerrno>
 #include <cstring>
 

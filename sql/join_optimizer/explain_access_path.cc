@@ -2518,7 +2518,6 @@ void Explain_format_tree::ExplainPrintSpilledToDisk(const Json_object *obj, stri
   const Json_dom *spill_dom = obj->get("spilled_to_disk");
   if (spill_dom == nullptr || spill_dom->json_type() != enum_json_type::J_BOOLEAN) return;
 
-  // Create GetJSONBoolean function?
   const bool spilled_to_disk = down_cast<const Json_boolean *>(spill_dom)->value();
   *explain += " (spilled_to_disk=";
   *explain += spilled_to_disk ? "true" : "false";
@@ -2549,7 +2548,6 @@ void Explain_format_tree::ExplainPrintBytesUsed(const Json_object *obj, string *
   const Json_dom *bytes_dom = obj->get("bytes_used");
   if (bytes_dom == nullptr || bytes_dom->json_type() != enum_json_type::J_UINT) return;
 
-  // Create GetJSONUnit function?
   const size_t bytes_used = down_cast<const Json_uint *>(bytes_dom)->value();
   *explain += " (bytes_used=";
   *explain += FormatNumberReadably(bytes_used);

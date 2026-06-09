@@ -746,7 +746,6 @@ static HashJoinHintMap BuildHashJoinHintMap(
   return map;
 }
 
-// Currently using estiamted build bytes as weights.
 static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudgetAuto(
     size_t join_buffer_size,
     std::unordered_map<const AccessPath *, HashJoinNodeInfo> &nodes,
@@ -894,7 +893,6 @@ static std::unordered_map<const AccessPath *, size_t> ComputeHashJoinMemoryBudge
   return budgets;  
 }
 
-// Rename function?
 static std::unordered_map<const AccessPath *, HashJoinNodeInfo> HashJoinNodeMap(
   const AccessPath *root, THD *thd) {
   std::unordered_map<const AccessPath *, HashJoinNodeInfo> nodes;
