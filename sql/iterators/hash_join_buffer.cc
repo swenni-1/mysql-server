@@ -321,7 +321,6 @@ StoreRowResult HashJoinRowBuffer::StoreRow(THD *thd,
     m_mem_root.RawCommit(bytes_to_commit);
   } else {
     if (reject_duplicate_keys) {
-      // num_of_rows++; // here as well?
       return StoreRowResult::ROW_STORED;
     }
     // We already have another element with the same key, so our insert
@@ -358,8 +357,6 @@ std::optional<LinkedImmutableString> HashJoinRowBuffer::first_row() const {
 }
 
 size_t hash_join_buffer::HashJoinRowBuffer::UsedMemoryBytes() const {
-  // Preious tried solution. 
-  // return m_allocated_bytes;
   if (m_hash_map == nullptr) return 0;
 
   const size_t hash_map_bytes = 

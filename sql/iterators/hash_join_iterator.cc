@@ -630,7 +630,6 @@ bool HashJoinIterator::BuildHashTable() {
         }
 
 
-        // TODO: Needs to be tested on more queries to see if overestimation is constant. 
         size_t rows_spilled = 0;
         for (const ChunkPair &chunk_pair : m_chunk_files_on_disk) {
           rows_spilled += chunk_pair.build_chunk.NumRows();
